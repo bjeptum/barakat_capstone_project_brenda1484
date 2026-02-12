@@ -1,0 +1,13 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+
+# Secrets
+*.key
+*.secret
+*.zip  # Unless committed lambda.zip
+
+# Temp
+*.log
+crash.log

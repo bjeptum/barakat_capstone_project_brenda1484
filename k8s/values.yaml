@@ -1,0 +1,38 @@
+# Custom Helm values for retail-store-sample-app
+# Core: Defaults for in-cluster DBs (pods)
+catalog:
+  db:
+    type: mysql
+    host: mysql  # In-cluster service name
+    port: 3306
+    name: catalog
+    user: root
+    password: password  # Default or override
+
+orders:
+  db:
+    type: postgres
+    host: postgres  # In-cluster
+    port: 5432
+    name: orders
+    user: postgres
+    password: password
+
+# Other in-cluster: dynamodb-local, rabbitmq, redis (defaults enabled)
+
+# Bonus: Override for external RDS
+# catalog:
+#   db:
+#     host: your-mysql-rds-endpoint
+#     user: "{{ .Values.catalog.db.user }}"  # From secret
+#     password: "{{ .Values.catalog.db.password }}"  # From secret
+# orders:
+#   db:
+#     host: your-postgres-rds-endpoint
+#     user: "{{ .Values.orders.db.user }}"
+#     password: "{{ .Values.orders.db.password }}"
+
+ui:
+  service:
+    type: ClusterIP
+    port: 80
