@@ -23,6 +23,7 @@ module "vpc" {
 
   enable_nat_gateway = true
   single_nat_gateway = true
+  one_nat_gateway_per_az = false
 }
 
 module "eks" {
@@ -40,9 +41,10 @@ module "eks" {
   eks_managed_node_groups = {
     default = {
       min_size       = 1
-      max_size       = 3
-      desired_size   = 2
-      instance_types = ["t3.medium"]
+      max_size       = 1
+      desired_size   = 1
+      instance_types = ["t3.micro"]
+      capacity_type  = "ON_DEMAND"
     }
   }
 
@@ -198,13 +200,13 @@ resource "aws_security_group" "rds_sg" {
     from_port       = 3306
     to_port         = 3306
     protocol        = "tcp"
-    security_groups = module.eks.node_security_group_id
+    security_groups = [module.eks.node_security_group_id]
   }
   ingress {
     from_port       = 5432
     to_port         = 5432
     protocol        = "tcp"
-    security_groups = module.eks.node_security_group_id
+    security_groups = [module.eks.node_security_group_id]
   }
 }
 
