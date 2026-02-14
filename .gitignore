@@ -2,6 +2,7 @@
 .terraform/
 *.tfstate
 *.tfstate.*
+.tfplan
 
 # Secrets
 *.key
