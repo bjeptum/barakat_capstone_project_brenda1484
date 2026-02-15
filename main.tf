@@ -1,20 +1,3 @@
-# ─────────── aws-auth ConfigMap ───────────
-resource "kubernetes_config_map_v1_data" "aws_auth" {
-  metadata {
-    name      = "aws-auth"
-    namespace = "kube-system"
-  }
-
-  data = {
-    mapUsers = yamlencode([
-      {
-        userarn  = "arn:aws:iam::561435029645:user/barakat-dev-view"
-        username = "barakat-dev-view"
-        groups   = ["system:masters"]  # system:masters allows Terraform to manage Kubernetes resources
-      }
-    ])
-  }
-}
 
 # ─────────── RoleBinding for barakat-dev-view ───────────
 resource "kubernetes_role_binding" "barakat_dev_view" {
@@ -80,9 +63,9 @@ module "eks" {
   eks_managed_node_groups = {
     default = {
       min_size       = 1
-      max_size       = 3
-      desired_size   = 2
-      instance_types = ["t3.micro"]
+      max_size       = 1
+      desired_size   = 1
+      instance_types = ["t3.small"]
       capacity_type  = "ON_DEMAND"
     }
   }
