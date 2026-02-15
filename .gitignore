@@ -16,3 +16,6 @@ crash.log
 # Binaries
 **/eksctl
 eksctl
+
+# Secret files
+grading.json
