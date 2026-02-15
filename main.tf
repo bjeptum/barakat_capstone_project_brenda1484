@@ -1,3 +1,40 @@
+# ─────────── aws-auth ConfigMap ───────────
+resource "kubernetes_config_map_v1_data" "aws_auth" {
+  metadata {
+    name      = "aws-auth"
+    namespace = "kube-system"
+  }
+
+  data = {
+    mapUsers = yamlencode([
+      {
+        userarn  = "arn:aws:iam::561435029645:user/barakat-dev-view"
+        username = "barakat-dev-view"
+        groups   = ["system:masters"]  # system:masters allows Terraform to manage Kubernetes resources
+      }
+    ])
+  }
+}
+
+# ─────────── RoleBinding for barakat-dev-view ───────────
+resource "kubernetes_role_binding" "barakat_dev_view" {
+  metadata {
+    name      = "barakat-dev-view-binding"
+    namespace = kubernetes_namespace.retail_app.metadata[0].name
+  }
+
+  role_ref {
+    api_group = "rbac.authorization.k8s.io"
+    kind      = "ClusterRole"
+    name      = "view"       # gives read-only access in this namespace
+  }
+
+  subject {
+    kind      = "User"
+    name      = "barakat-dev-view"  # must match aws-auth username
+    api_group = "rbac.authorization.k8s.io"
+  }
+}
 provider "aws" {
   region = "us-east-1"
   default_tags {
@@ -43,9 +80,9 @@ module "eks" {
   eks_managed_node_groups = {
     default = {
       min_size       = 1
-      max_size       = 1
-      desired_size   = 1
-      instance_types = ["t3.small"]
+      max_size       = 3
+      desired_size   = 2
+      instance_types = ["t3.micro"]
       capacity_type  = "ON_DEMAND"
     }
   }
@@ -69,6 +106,7 @@ module "eks" {
       })
     }
   }
+
 }
 
 data "aws_eks_cluster_auth" "cluster" {
@@ -114,36 +152,11 @@ resource "aws_iam_user_policy" "s3_put" {
 }
 
 # aws-auth ConfigMap mapping for dev user
-resource "kubernetes_config_map_v1_data" "aws_auth" {
-  metadata {
-    name      = "aws-auth"
-    namespace = "kube-system"
-  }
-  data = {
-    mapUsers = yamlencode([
-      {
-        userarn  = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:user/barakat-dev-view"
-        username = "barakat-dev-view"
-        groups   = ["system:authenticated"]
-      }
-    ])
-  }
-}
 
-# RoleBinding for dev user (view-only in retail-app namespace)
-resource "kubernetes_role_binding" "barakat_dev_view" {
+# Namespace for retail-app (added if missing)
+resource "kubernetes_namespace" "retail_app" {
   metadata {
-    name      = "barakat-dev-view-binding"
-    namespace = "retail-app"
-  }
-  role_ref {
-    api_group = "rbac.authorization.k8s.io"
-    kind      = "ClusterRole"
-    name      = "view"
-  }
-  subject {
-    kind = "User"
-    name = "barakat-dev-view"
+    name = "retail-app"
   }
 }
 
