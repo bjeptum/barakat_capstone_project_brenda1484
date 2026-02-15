@@ -12,11 +12,14 @@ data "aws_caller_identity" "current" {}
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
   version = "~> 5.0"
-  name = "barakat-2025-capstone-vpc"  # Grading required name
+
+  name = "barakat-2025-capstone-vpc"
   cidr = "10.0.0.0/16"
+
   azs             = ["us-east-1a", "us-east-1b"]
   private_subnets = ["10.0.1.0/24", "10.0.2.0/24"]
   public_subnets  = ["10.0.101.0/24", "10.0.102.0/24"]
+
   enable_nat_gateway     = true
   single_nat_gateway     = true
   one_nat_gateway_per_az = false
@@ -25,25 +28,45 @@ module "vpc" {
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
   version = "~> 20.0"
+
   cluster_name    = "barakat-2025-capstone-cluster"
   cluster_version = "1.30"
+
   vpc_id     = module.vpc.vpc_id
   subnet_ids = module.vpc.private_subnets
-  cluster_enabled_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
-  cluster_endpoint_public_access = true
+
+  cluster_endpoint_public_access  = true
   cluster_endpoint_private_access = true
+
+  cluster_enabled_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
+
   eks_managed_node_groups = {
     default = {
       min_size       = 1
       max_size       = 1
       desired_size   = 1
-      instance_types = ["t3.micro"]
+      instance_types = ["t3.small"]
       capacity_type  = "ON_DEMAND"
     }
   }
+
   cluster_addons = {
     amazon-cloudwatch-observability = {
       most_recent = true
+      configuration_values = jsonencode({
+        agent = {
+          resources = {
+            requests = {
+              cpu    = "100m"
+              memory = "128Mi"
+            }
+            limits = {
+              cpu    = "200m"
+              memory = "256Mi"
+            }
+          }
+        }
+      })
     }
   }
 }
@@ -78,7 +101,7 @@ resource "aws_iam_user_login_profile" "dev_view_console" {
 }
 
 resource "aws_iam_user_policy" "s3_put" {
-  name = "barakat-s3-put-assets" 
+  name = "barakat-s3-put-assets"
   user = aws_iam_user.dev_view.name
   policy = jsonencode({
     Version = "2012-10-17"
@@ -90,6 +113,7 @@ resource "aws_iam_user_policy" "s3_put" {
   })
 }
 
+# aws-auth ConfigMap mapping for dev user
 resource "kubernetes_config_map_v1_data" "aws_auth" {
   metadata {
     name      = "aws-auth"
@@ -106,6 +130,7 @@ resource "kubernetes_config_map_v1_data" "aws_auth" {
   }
 }
 
+# RoleBinding for dev user (view-only in retail-app namespace)
 resource "kubernetes_role_binding" "barakat_dev_view" {
   metadata {
     name      = "barakat-dev-view-binding"
@@ -117,8 +142,8 @@ resource "kubernetes_role_binding" "barakat_dev_view" {
     name      = "view"
   }
   subject {
-    kind      = "User"
-    name      = "barakat-dev-view"
+    kind = "User"
+    name = "barakat-dev-view"
   }
 }
 
@@ -176,120 +201,27 @@ resource "aws_lambda_permission" "allow_s3" {
   source_arn    = aws_s3_bucket.assets.arn
 }
 
-# Bonus: Managed Persistence (RDS)
-resource "aws_security_group" "rds_sg" {
-  name        = "barakat-rds-sg"
-  description = "Allow EKS nodes to access RDS"
-  vpc_id      = module.vpc.vpc_id
-  ingress {
-    from_port       = 3306
-    to_port         = 3306
-    protocol        = "tcp"
-    security_groups = [module.eks.node_security_group_id]
-  }
-  ingress {
-    from_port       = 5432
-    to_port         = 5432
-    protocol        = "tcp"
-    security_groups = [module.eks.node_security_group_id]
-  }
-  egress {  # Added missing egress
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-}
+# ────────────────────────────────────────────────────────────────────────────────
+# Bonus: Managed Persistence (RDS) – fully commented out for now
+# ────────────────────────────────────────────────────────────────────────────────
 
-resource "aws_db_subnet_group" "main" {
-  name       = "barakat-db-subnet-group"
-  subnet_ids = module.vpc.private_subnets
-}
+# resource "aws_security_group" "rds_sg" { ... }  (all RDS resources commented)
 
-# Secrets Manager for credentials
-resource "aws_secretsmanager_secret" "db_creds" {
-  name = "barakat-db-creds"
-}
+# ────────────────────────────────────────────────────────────────────────────────
+# Bonus: Advanced Networking (ALB) – only IRSA role active
+# ────────────────────────────────────────────────────────────────────────────────
 
-resource "aws_secretsmanager_secret_version" "db_creds" {
-  secret_id = aws_secretsmanager_secret.db_creds.id
-  secret_string = jsonencode({
-    username = "admin"  # generate dynamically in real
-    password = "StrongPassword123!"
-  })
-}
-
-# MySQL Catalog
-resource "aws_db_instance" "mysql_catalog" {
-  identifier             = "barakat-catalog-db"  # Fixed naming
-  allocated_storage      = 20
-  engine                 = "mysql"
-  instance_class         = "db.t3.micro"
-  db_name                = "catalog"
-  username               = jsondecode(aws_secretsmanager_secret_version.db_creds.secret_string)["username"] # Uses secrets
-  password               = jsondecode(aws_secretsmanager_secret_version.db_creds.secret_string)["password"] # Uses secrets
-  db_subnet_group_name   = aws_db_subnet_group.main.name
-  vpc_security_group_ids = [aws_security_group.rds_sg.id]
-  skip_final_snapshot    = true
-  publicly_accessible    = false  # Added for security/cost
-  multi_az               = false  # Added for cost
-}
-
-# PostgreSQL Orders
-resource "aws_db_instance" "postgres_orders" {
-  identifier             = "barakat-orders-db"
-  allocated_storage      = 20
-  engine                 = "postgres"
-  instance_class         = "db.t3.micro"
-  db_name                = "orders"
-  username               = jsondecode(aws_secretsmanager_secret_version.db_creds.secret_string)["username"] # Uses secrets
-  password               = jsondecode(aws_secretsmanager_secret_version.db_creds.secret_string)["password"] # Uses secrets
-  db_subnet_group_name   = aws_db_subnet_group.main.name
-  vpc_security_group_ids = [aws_security_group.rds_sg.id]
-  skip_final_snapshot    = true
-  publicly_accessible    = false
-  multi_az               = false
-}
-
-# Bonus: Advanced Networking ALB
 module "lb_controller_irsa" {
   source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
   version = "~> 5.35"
+
   role_name = "barakat-alb-controller"
   attach_load_balancer_controller_policy = true
+
   oidc_providers = {
     main = {
-      provider_arn = module.eks.oidc_provider_arn
+      provider_arn               = module.eks.oidc_provider_arn
       namespace_service_accounts = ["kube-system:aws-load-balancer-controller"]
     }
-  }
-}
-
-resource "kubernetes_service_account" "alb_controller" {
-  metadata {
-    name      = "aws-load-balancer-controller"
-    namespace = "kube-system"
-    annotations = {
-      "eks.amazonaws.com/role-arn" = module.lb_controller_irsa.iam_role_arn
-    }
-  }
-}
-
-resource "helm_release" "alb_controller" {
-  name       = "aws-load-balancer-controller"
-  repository = "https://aws.github.io/eks-charts"
-  chart      = "aws-load-balancer-controller"
-  namespace  = "kube-system"
-  set {
-    name  = "clusterName"
-    value = module.eks.cluster_name
-  }
-  set {
-    name  = "serviceAccount.create"
-    value = "false"
-  }
-  set {
-    name  = "serviceAccount.name"
-    value = "aws-load-balancer-controller"
   }
 }
