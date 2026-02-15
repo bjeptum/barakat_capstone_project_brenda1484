@@ -12,3 +12,7 @@
 # Temp
 *.log
 crash.log
+
+# Binaries
+**/eksctl
+eksctl
