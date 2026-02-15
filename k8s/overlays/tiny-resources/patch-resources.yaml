@@ -1,0 +1,17 @@
+# Apply tiny resources to all Deployments/StatefulSets
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: "*"  # Apply to all
+spec:
+  template:
+    spec:
+      containers:
+      - name: "*"
+        resources:
+          requests:
+            cpu: "25m"
+            memory: "32Mi"
+          limits:
+            cpu: "50m"
+            memory: "64Mi"
