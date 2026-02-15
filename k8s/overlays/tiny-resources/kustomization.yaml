@@ -1,8 +1,15 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
-  - ../../base/deploy/kubernetes/base   # Point to the base manifests
+namespace: retail-app
 
-patchesStrategicMerge:
-  - patch-resources.yaml
+resources:
+  - ../../base/retail-store-sample-app/deploy/kubernetes/base
+
+patches:
+  - path: patch-resources.yaml
+    target:
+      kind: Deployment
+  - path: patch-resources.yaml
+    target:
+      kind: StatefulSet
