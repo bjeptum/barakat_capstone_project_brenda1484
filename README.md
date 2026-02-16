@@ -77,7 +77,7 @@ After pipeline completes (or manual `kubectl apply`):
 
 1. Get the LoadBalancer URL:
 
-```bash
+```
 kubectl get svc ui -n retail-app -o jsonpath='{.status.loadBalancer.ingress[0].hostname}{"\n"}'
 ```
 
@@ -102,7 +102,7 @@ If URL shows `<pending>` → wait 2–5 minutes (ELB provisioning)
 
 Check pods:
 
-```bash
+```
 kubectl get pods -n retail-app -o wide
 ```
 
@@ -116,7 +116,7 @@ Run these after deployment:
 
 #### Infrastructure & App
 
-```bash
+```
 # Cluster running
 aws eks describe-cluster --name barakat-2025-capstone-cluster --query "cluster.status"
 
@@ -131,7 +131,7 @@ kubectl get pods -n retail-app
 
 #### Developer Access (barakat-dev-view)
 
-```bash
+```
 # Switch to dev profile
 export AWS_PROFILE=barakat-dev
 
@@ -165,7 +165,7 @@ aws logs describe-log-groups --query "logGroups[?contains(logGroupName, 'barakat
 
 #### Serverless (S3 + Lambda)
 
-```bash
+```
 # Upload test file
 echo "test-$$ (date)" > test-$$(date +%s).jpg
 aws s3 cp test-*.jpg s3://barakat-assets-1484/
@@ -178,7 +178,7 @@ aws logs tail /aws/lambda/barakat-asset-processor --since 10m
 
 ### 4. Clean Up (to avoid costs)
 
-```bash
+```
 terraform destroy -auto-approve
 ```
 
