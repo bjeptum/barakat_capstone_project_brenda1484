@@ -1,58 +1,85 @@
 name: Terraform CI/CD
+
 on:
   pull_request:
-    branches: [master]  
+    branches: [master]
   push:
     branches: [master]
+
 jobs:
   plan:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.5.0
+          terraform_version: 1.9.0
+
       - name: Terraform Init
         run: terraform init
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: us-east-1
+          AWS_DEFAULT_REGION:    us-east-1
+
       - name: Terraform Plan
         run: terraform plan -out=plan.tfplan
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: us-east-1
+          AWS_DEFAULT_REGION:    us-east-1
+
   apply:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'  # Fixed
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.5.0
+          terraform_version: 1.9.0
+
       - name: Terraform Init
         run: terraform init
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: us-east-1
+          AWS_DEFAULT_REGION:    us-east-1
+
       - name: Terraform Apply
         run: terraform apply -auto-approve
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: us-east-1
-      - name: Deploy App (Optional)
+          AWS_DEFAULT_REGION:    us-east-1
+
+      - name: Install AWS CLI and kubectl
+        run: |
+          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip awscliv2.zip
+          sudo ./aws/install --update
+          aws --version
+          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/
+          kubectl version --client
+
+      - name: Deploy Retail Store App using kubectl manifest
         run: |
           aws eks update-kubeconfig --name barakat-2025-capstone-cluster --region us-east-1
-          helm upgrade --install retail-app \
-            https://github.com/aws-containers/retail-store-sample-app/releases/download/v0.5.0/retail-store-sample-app-0.5.0.tgz \
-            --namespace retail-app --create-namespace \
-            --values k8s/values.yaml
+          kubectl create namespace retail-app --dry-run=client -o yaml | kubectl apply -f -
+          kubectl apply -f https://github.com/aws-containers/retail-store-sample-app/releases/latest/download/kubernetes.yaml -n retail-app
+          echo "Waiting for pods to be ready..."
+          kubectl wait --for=condition=Ready pods --all -n retail-app --timeout=300s || true
+          kubectl get pods -n retail-app
+          kubectl get svc -n retail-app
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: us-east-1
+          AWS_DEFAULT_REGION:    us-east-1
