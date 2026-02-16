@@ -1,77 +1,185 @@
 # Barakat-2025-Capstone Project
 
 ## Overview
-This capstone project sets up a production-grade Kubernetes environment on AWS EKS for a retail e-commerce app. Uses Terraform for IaC, Helm for app deployment, GitHub Actions for CI/CD, CloudWatch for logging, S3+Lambda for serverless.
+This capstone project ("Project Barakat") deploys a production-grade Kubernetes environment on AWS EKS for the AWS Retail Store Sample Application.  
 
-Goal: Secure, scalable, cost-optimized (t3.micro, single NAT, destroy after).
+**Technologies used**:
+- **Terraform** → Infrastructure as Code (VPC, EKS, IAM, S3, Lambda)
+- **kubectl** → Direct deployment of official manifest (no Helm)
+- **GitHub Actions** → CI/CD pipeline (plan on PR, apply + deploy on merge)
+- **Amazon CloudWatch** → Centralized logging (control plane + container logs)
+- **S3 + Lambda** → Event-driven serverless image processing
+
+**Key constraints respected**:
+- Free-tier friendly (t3.micro nodes, single NAT gateway)
+- Region: us-east-1
+- Student ID: 1484 (used in bucket names)
+
+**Goal**: Fully automated, observable, secure EKS cluster ready for developer hand-off.
+
+---
 
 ## Prerequisites
-- AWS account (free tier).
-- Terraform v1.5+, kubectl, Helm, AWS CLI.
-- GitHub repo with secrets: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY.
-- Student ID: 1484 (for buckets)( My Student ID)
+- AWS account (free tier eligible)
+- Tools installed locally:
+  - Terraform ≥ 1.9.0
+  - AWS CLI v2
+  - kubectl
+- GitHub repository secrets configured:
+  - `AWS_ACCESS_KEY_ID`
+  - `AWS_SECRET_ACCESS_KEY`
+- Your AWS profile configured with admin credentials
 
-## High-Level Plan
-1. Terraform infrastructure.
-2. Deploy app on EKS.
-3. Secure developer access.
-4. Logging.
-5. S3 + Lambda.
-6. CI/CD.
-7. Bonuses (RDS, ALB).
-8. Deliverables.
+---
 
-## Cost Optimization
-- EKS: 1 t3.micro node, min/max=1.
-- Single NAT.
-- RDS: db.t3.micro, no multi-AZ, private.
-- Destroy after: terraform destroy.
+## High-Level Architecture
+- VPC: project-barakat-vpc (public + private subnets, 2 AZs)
+- EKS: barakat-2025-capstone-cluster (1.33, t3.micro nodes)
+- App: Retail Store Sample deployed in `retail-app` namespace
+- Logging: CloudWatch (control plane + container logs via add-on)
+- Serverless: S3 bucket `barakat-assets-1484` → triggers Lambda `barakat-asset-processor`
+- CI/CD: GitHub Actions (plan on PR, apply + deploy on merge to main)
+- Developer access: IAM user `barakat-dev-view` (ReadOnly + kubectl view)
 
-Expected: $4-12 for 24-48h.
+---
 
-## Infrastructure Setup
-Run: terraform init, plan, apply.
+## Deployment Guide
 
-## CI/CD Automation
-GitHub Actions: PR → plan, merge → apply + deploy.
+### 1. How to Trigger the Pipeline
+The entire deployment is fully automated via **GitHub Actions** (`.github/workflows/terraform.yml`).
 
-Secrets: AWS creds.
+**Two ways it runs**:
 
-Verification: Create PR (plan runs), merge (apply runs).
+- **On Pull Request** (to main/master):
+  - Triggers `terraform plan`
+  - Shows planned changes (review in PR checks)
+  - Safe — no apply happens
 
-## Bonus: Managed Persistence (RDS)
-Replaces in-cluster DBs with RDS MySQL/Postgres, secrets in Secrets Manager.
+- **On Merge / Push to main/master**:
+  - Triggers `terraform apply -auto-approve`
+  - Deploys/updates infrastructure
+  - Runs `kubectl apply` of the official retail store manifest
 
-Install External Secrets Operator: helm install external-secrets external-secrets/external-secrets -n external-secrets --create-namespace
+**Manual trigger** (optional):
+1. Go to your GitHub repo → **Actions** tab
+2. Select the "Terraform CI/CD" workflow
+3. Click **Run workflow** (if enabled)
 
-Create SecretStore and ExternalSecret YAMLs (as in solution).
+**What gets deployed**:
+- VPC, EKS cluster, IAM roles/user, S3 bucket, Lambda
+- Retail Store app pods in `retail-app` namespace
 
-Update Helm values.yaml: catalog.db.host = RDS endpoint, secretName = db-creds.
+---
 
-## Bonus: Advanced Networking (ALB)
-Exposes UI with ALB, HTTPS via ACM (use nip.io).
+### 2. Accessing the Retail Store Application
 
-Request ACM cert: aws acm request-certificate --domain-name "*.barakat-1484.nip.io" --validation-method DNS --region us-east-1
+After pipeline completes (or manual `kubectl apply`):
 
-Apply ingress.yaml.
+1. Get the LoadBalancer URL:
 
-App URL: https://barakat-1484.nip.io (submit if done).
+```bash
+kubectl get svc ui -n retail-app -o jsonpath='{.status.loadBalancer.ingress[0].hostname}{"\n"}'
+```
 
-## Deliverables
-- Tagging: All with Project: barakat-2025-capstone.
-- Git Repo: https://github.com/bjeptum/barakat_capstone_project_brenda1484
-- Architecture Diagram: architecture_diagram.png
-- Deployment Guide: See above.
-- Trigger: PR/merge as above.
-- App URL: 
-- Credentials: CLI Access Key ID: [from output], Secret: [from output]; Console Password: [from output].
-- Grading Data: grading.json (run terraform output -json > grading.json)
+Example output:
 
-## Verification
-- App: kubectl get pods -n retail-app
-- Lambda: Upload to S3, check CloudWatch.
-- Dev Access: kubectl get (works), delete (fails).
-- Logs: CloudWatch groups.
+```
+a8212eea11a8a48858422bd22f421a7a-2017754698.us-east-1.elb.amazonaws.com
+```
 
-## Clean Up
-terraform destroy to avoid costs.
+
+Open in browser:
+
+```
+http://a8212eea11a8a48858422bd22f421a7a-2017754698.us-east-1.elb.amazonaws.com
+```
+
+→ You should see the InnovateMart Retail Store UI with products, cart, etc.
+
+**Troubleshooting:**
+
+If URL shows `<pending>` → wait 2–5 minutes (ELB provisioning)
+
+Check pods:
+
+```bash
+kubectl get pods -n retail-app -o wide
+```
+
+All should be `Running` / `Ready`.
+
+---
+
+### 3. Verification Checklist (for submission)
+
+Run these after deployment:
+
+#### Infrastructure & App
+
+```bash
+# Cluster running
+aws eks describe-cluster --name barakat-2025-capstone-cluster --query "cluster.status"
+
+# Nodes
+kubectl get nodes
+
+# Pods healthy
+kubectl get pods -n retail-app
+```
+
+---
+
+#### Developer Access (barakat-dev-view)
+
+```bash
+# Switch to dev profile
+export AWS_PROFILE=barakat-dev
+
+# Update kubeconfig
+aws eks update-kubeconfig --name barakat-2025-capstone-cluster --region us-east-1 --profile barakat-dev
+
+# Read access (should succeed)
+kubectl get pods -n retail-app
+kubectl get nodes
+
+# Write access (should fail)
+kubectl delete pod dummy-test -n retail-app --force   # → Forbidden error
+
+# Switch back
+unset AWS_PROFILE
+```
+
+---
+
+#### Logging
+
+```bash
+# Control plane logs (5 groups)
+aws logs describe-log-groups --query "logGroups[?contains(logGroupName, 'barakat-2025-capstone-cluster') && contains(logGroupName, '/cluster') || contains(logGroupName, '/api') || contains(logGroupName, '/audit')].logGroupName" --output text
+
+# Container logs (retail-app)
+aws logs describe-log-groups --query "logGroups[?contains(logGroupName, 'barakat-2025-capstone-cluster') && contains(logGroupName, 'containerinsights')].logGroupName" --output text
+```
+
+---
+
+#### Serverless (S3 + Lambda)
+
+```bash
+# Upload test file
+echo "test-$$ (date)" > test-$$(date +%s).jpg
+aws s3 cp test-*.jpg s3://barakat-assets-1484/
+
+# Check Lambda logs
+aws logs tail /aws/lambda/barakat-asset-processor --since 10m
+```
+
+---
+
+### 4. Clean Up (to avoid costs)
+
+```bash
+terraform destroy -auto-approve
+```
+
+Warning: This deletes everything 
