@@ -1,5 +1,7 @@
 
-# ─────────── RoleBinding for barakat-dev-view ───────────
+# ─────────── RoleBinding for barakat-dev-view (kept for compatibility) ───────────
+# NOTE: This is now optional/redundant because we use modern EKS Access Entries below.
+# You can safely delete this block later if you want a cleaner file.
 resource "kubernetes_role_binding" "barakat_dev_view" {
   metadata {
     name      = "barakat-dev-view-binding"
@@ -18,6 +20,7 @@ resource "kubernetes_role_binding" "barakat_dev_view" {
     api_group = "rbac.authorization.k8s.io"
   }
 }
+
 provider "aws" {
   region = "us-east-1"
   default_tags {
@@ -50,7 +53,7 @@ module "eks" {
   version = "~> 20.0"
 
   cluster_name    = "barakat-2025-capstone-cluster"
-  cluster_version = "1.30"
+  cluster_version = "1.31"
 
   vpc_id     = module.vpc.vpc_id
   subnet_ids = module.vpc.private_subnets
@@ -62,10 +65,10 @@ module "eks" {
 
   eks_managed_node_groups = {
     default = {
-      min_size       = 2
-      max_size       = 2
-      desired_size   = 2
-      instance_types = ["t3.micro"]
+      min_size       = 3
+      max_size       = 4
+      desired_size   = 4
+      instance_types = ["t3.small"]
       capacity_type  = "ON_DEMAND"
     }
   }
@@ -90,6 +93,25 @@ module "eks" {
     }
   }
 
+}
+
+# ─────────── EKS Access Entry for barakat-dev-view (MODERN & RECOMMENDED) ───────────
+resource "aws_eks_access_entry" "barakat_dev_view" {
+  cluster_name  = module.eks.cluster_name
+  principal_arn = aws_iam_user.dev_view.arn
+  type          = "STANDARD"
+}
+
+resource "aws_eks_access_policy_association" "barakat_dev_view" {
+  cluster_name  = module.eks.cluster_name
+  principal_arn = aws_iam_user.dev_view.arn
+  policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSViewPolicy"
+
+  access_scope {
+    type = "cluster"   # cluster-wide read-only (exactly what the assignment wants)
+  }
+
+  depends_on = [aws_eks_access_entry.barakat_dev_view]
 }
 
 data "aws_eks_cluster_auth" "cluster" {
@@ -117,8 +139,8 @@ resource "aws_iam_access_key" "dev_view_key" {
 }
 
 resource "aws_iam_user_login_profile" "dev_view_console" {
-  user                    = aws_iam_user.dev_view.name
-  password_reset_required = false
+  user                        = aws_iam_user.dev_view.name
+  password_reset_required     = false
 }
 
 resource "aws_iam_user_policy" "s3_put" {
@@ -213,7 +235,6 @@ module "lb_controller_irsa" {
 
   role_name = "barakat-alb-controller"
   attach_load_balancer_controller_policy = true
-
   oidc_providers = {
     main = {
       provider_arn               = module.eks.oidc_provider_arn
